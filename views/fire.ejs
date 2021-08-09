@@ -1,0 +1,258 @@
+ <!doctype html>
+<!-- See http://www.firepad.io/docs/ for detailed embedding docs. -->
+<html>
+<head>
+ 
+ <meta charset="utf-8" />
+
+  <title>Intervue.io</title>
+
+  <script src='/socket.io/socket.io.js'></script>
+
+  <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
+
+    <!-- xterm js -->
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/xterm.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/xterm.min.js"></script> 
+
+
+
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/5.5.4/firebase.js"></script>
+
+  <!-- CodeMirror and its JavaScript mode file -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.17.0/codemirror.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.17.0/mode/javascript/javascript.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.17.0/codemirror.css" />
+
+  <!-- Firepad -->
+  <link rel="stylesheet" href="https://firepad.io/releases/v1.5.9/firepad.css" />
+  <script src="https://firepad.io/releases/v1.5.9/firepad.min.js"></script>
+  
+  <script>
+    const ROOM_ID = "<%= roomId %>";
+</script>
+
+  <style>
+    html { height: 100%; }
+    body { 
+      background-color: 	#36454F;
+      height: 100%;      
+       margin:20px;
+      padding:20px;
+      
+       display:flex;
+       flex-wrap: wrap;
+       
+       
+       }
+    /* Height / width / positioning can be customized for your use case.
+       For demo purposes, we make firepad fill the entire browser. */
+    #firepad-container {
+      border:2px solid white;
+     
+      margin-right:20px;
+      width: 50%;
+      height: 50%;
+    }
+    .main{
+      width:inherit;
+      height:50%;
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+
+    }
+    .main > button{
+      padding: 12px;
+      width:140px;
+      height:max-content;
+      background-color: white;
+      color:black;
+      font-size: x-large;
+      margin-bottom: 20px;
+      border:none;
+      border-radius: 15px;
+    }
+    video{
+      width:300px;
+      height: 300px;
+      float:right;
+      padding:20px;
+      border:5px solid black;
+    }
+
+  </style>
+</head>
+
+<body onload="init()">
+  
+  
+
+       <div id="firepad-container"></div> 
+       <div class='main'> 
+         <button onclick="getresult()">Run code</button>
+         <div id="terminal"></div>
+       </div>
+       <div id="video-grid" ></div>
+       
+      
+<script>
+  var firepadRef;
+  var codeMirror;
+  var firepad;
+
+  
+  const socket = io("/");
+  const videoGrid = document.getElementById("video-grid");
+  
+  var peer = new Peer(undefined, {
+    path: "/peerjs",
+    host: "/",
+    port: "443",
+  });
+ 
+
+    function init() {
+      //// Initialize Firebase.
+   
+      var config = {
+        apiKey: 'AIzaSyBRwfY__7KtgiOgYXC1b6LRNDl6tyEXL4k',
+        authDomain: "firepad-faf99.firebaseapp.com",
+        databaseURL: "https://firepad-gh-tests.firebaseio.com"
+      };
+      firebase.initializeApp(config);
+
+      //// Get Firebase Database reference.
+       firepadRef = getExampleRef();
+
+      //// Create CodeMirror (with line numbers and the JavaScript mode).
+       codeMirror = CodeMirror(document.getElementById('firepad-container'), {
+        lineNumbers: true,
+        mode: 'javascript'
+      });
+
+      //// Create Firepad.
+      firepad = Firepad.fromCodeMirror(firepadRef, codeMirror, {
+        defaultText: '// JavaScript Editing with Firepad!\nfunction go() {\n  var message = "Hello, world.";\n  console.log(message);\n} \n\ngo();'
+      });
+    }
+
+    // Helper to get hash from end of URL or generate a random one.
+    function getExampleRef() {
+      var ref = firebase.database().ref();
+      var hash = window.location.hash.replace(/#/g, '');
+      if (hash) {
+        ref = ref.child(hash);
+      } else {
+        ref = ref.push(); // generate unique location.
+        
+        window.location = window.location + '#' + ref.key; // add it as a hash to the URL.
+
+      }
+      if (typeof console !== 'undefined') {
+        console.log('Firebase data: ', ref.toString());
+      }
+      return ref;
+    }
+
+
+
+   //xterm js integration code
+
+        let terminalContainer = document.getElementById('terminal')
+        term = new Terminal({
+            cols: 80,
+            rows: 24,
+            cursorBlink: true
+        })
+        term.open(terminalContainer)
+        term._initialized = true
+
+        term.writeln("welcome to the web terminal!");
+        term.writeln('~$')
+        
+
+
+
+
+
+        const myVideo = document.createElement("video");
+        myVideo.muted = true;
+        let myVideoStream;
+        navigator.mediaDevices
+          .getUserMedia({
+            video: true,
+            audio: true,
+          })
+          .then((stream) => {
+            myVideoStream = stream;
+            addVideoStream(myVideo, stream);
+            
+            peer.on('call', (call) => {
+              call.answer(stream);
+              
+              const new_video = document.createElement("video");
+        
+              call.on('stream', (userVideoStream) => {
+                addVideoStream(new_video, userVideoStream);
+              });
+            });
+            socket.on("user-connected", (userId) => {
+             
+              setTimeout(connectToNewUser,1000,userId,stream)
+            });
+                              //onresult display output on terminal
+            socket.on('stdout',(data)=>{
+                term.writeln('~$  '+data);
+            })
+            socket.on('stderr',(data)=>{
+                term.writeln('~$  '+data);
+            })
+        
+          });
+        
+        peer.on("open", (id) => {
+          socket.emit("join-room", ROOM_ID, id);
+        });
+        
+        const connectToNewUser = (userId, stream) => {
+          const call = peer.call(userId, stream);
+          const video = document.createElement("video");
+          call.on("stream", (userVideoStream) => {
+            console.log(userVideoStream);
+            addVideoStream(video, userVideoStream);
+          });
+        };
+        
+        const addVideoStream = (myvideo, stream) => {
+          myvideo.srcObject = stream;
+          myvideo.addEventListener("loadedmetadata", () => {
+            myvideo.play();
+          });
+          videoGrid.append(myvideo);
+        };
+
+        function getresult(){
+    
+      
+          const code = firepad.getText();
+          //axios({method:'post',url:'/submission',data:{code:code}})
+          socket.emit('runcode',code)
+    
+      
+        }
+        
+
+  </script>
+
+    
+</body>
+
+     
+
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js" integrity="sha512-bZS47S7sPOxkjU/4Bt0zrhEtWx0y0CRkhEp8IckzK+ltifIIE9EMIMTuT/mEzoIMewUINruDBIR/jJnbguonqQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+</html>
